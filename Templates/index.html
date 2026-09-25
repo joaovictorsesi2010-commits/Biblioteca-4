@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <title>Livros</title>
+</head>
+<body>
+<h1>Minha biblioteca pessoal!</h1>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="flash-messages">
+                    {% for category, message in messages %}
+                        <div class="flash {{ category  }}" > {{ message }}</div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+
+
+
+
+    <table>
+      <thead>
+        <tr>
+          <th>Código do livro</th>
+          <th>Título</th>
+          <th>Autor</th>
+          <th>Ano de publicação</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for livro in livros %}
+        <tr>
+          <td>{{ livro[0] }}</td>
+          <td>{{ livro[1] }}</td>
+          <td>{{ livro[2] }}</td>
+          <td>{{ livro[3] }}</td>
+            <td>
+                <a href="{{ url_for('editar', id=livro[0]) }}">Editar</a>
+            </td>
+            <td>
+                <a href="{{ url_for('deletar', id=livro[0]) }}">Deletar</a>
+            </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <a href="novo">
+        <button type="button">Criar novo</button>
+    </a>
+    <a href="login">
+        <button type="button">Login</button>
+    </a>
+    <a href="#">
+        <button type="button">Relatório</button>
+    </a>
+
+</body>
+</html>
