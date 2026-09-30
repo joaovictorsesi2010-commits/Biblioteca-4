@@ -16,13 +16,18 @@ password = 'sysdba'
 
 con = fdb.connect(host=host, database=database, user=user, password=password)
 
+tentativas = {}
+bloqueados = []
+
 
 @app.route('/')
 def index():
     cursor = con.cursor()
 
-    cursor.execute("""SELECT l.id_livros, l.TITULO, l.AUTOR, l.ANO_PUBLICACAO
-                      FROM LIVROS l""")
+    cursor.execute("""
+        SELECT l.id_livros, l.TITULO, l.AUTOR, l.ANO_PUBLICACAO
+        FROM LIVROS l
+    """)
 
     livros = cursor.fetchall()
     cursor.close()
@@ -44,15 +49,19 @@ def criar():
     cursor = con.cursor()
 
     try:
-        cursor.execute("""SELECT 1 FROM livros WHERE titulo = ?""", [titulo])
+        cursor.execute("""
+            SELECT 1 FROM livros WHERE titulo = ?
+        """, [titulo])
 
         if cursor.fetchone():
             flash('Erro: Livro já existe no banco')
             return redirect(url_for('novo'))
 
-        cursor.execute("""INSERT INTO livros (titulo, autor, ano_publicacao)
-                          VALUES (?, ?, ?) RETURNING id_livros""",
-                       (titulo, autor, ano_publicacao))
+        cursor.execute("""
+            INSERT INTO livros (titulo, autor, ano_publicacao)
+            VALUES (?, ?, ?)
+            RETURNING id_livros
+        """, (titulo, autor, ano_publicacao))
 
         id_livros = cursor.fetchone()[0]
 
@@ -77,9 +86,11 @@ def editar(id):
     cursor = con.cursor()
 
     try:
-        cursor.execute("""SELECT id_livros, titulo, autor, ano_publicacao
-                          FROM LIVROS
-                          WHERE id_livros = ?""", [id])
+        cursor.execute("""
+            SELECT id_livros, titulo, autor, ano_publicacao
+            FROM LIVROS
+            WHERE id_livros = ?
+        """, [id])
 
         livro = cursor.fetchone()
 
@@ -92,14 +103,15 @@ def editar(id):
             autor = request.form['autor']
             ano_publicacao = request.form['ano_publicacao']
 
-            cursor.execute("""UPDATE LIVROS
-                              SET titulo = ?, autor = ?, ano_publicacao = ?
-                              WHERE id_livros = ?""",
-                           (titulo, autor, ano_publicacao, id))
+            cursor.execute("""
+                UPDATE LIVROS
+                SET titulo = ?, autor = ?, ano_publicacao = ?
+                WHERE id_livros = ?
+            """, (titulo, autor, ano_publicacao, id))
 
             con.commit()
 
-            flash('Livro editado com sucesso!')
+            flash('Livro editado')
             return redirect(url_for('index'))
 
         return render_template('editar.html', livro=livro)
@@ -117,7 +129,10 @@ def deletar(id):
     cursor = con.cursor()
 
     try:
-        cursor.execute("""DELETE FROM LIVROS WHERE id_livros = ?""", (id,))
+        cursor.execute("""
+            DELETE FROM LIVROS
+            WHERE id_livros = ?
+        """, (id,))
 
         con.commit()
 
@@ -150,7 +165,10 @@ def cadastrar():
         cursor = con.cursor()
 
         try:
-            cursor.execute("""SELECT 1 FROM USUARIOS WHERE nome = ?""", [nome])
+            cursor.execute("""
+                SELECT 1 FROM USUARIOS
+                WHERE nome = ?
+            """, [nome])
 
             if cursor.fetchone():
                 flash('Erro: Usuário já existe')
@@ -158,9 +176,10 @@ def cadastrar():
 
             senha_hash = bcrypt.generate_password_hash(senha).decode('utf-8')
 
-            cursor.execute("""INSERT INTO USUARIOS (NOME, SENHA, EMAIL)
-                              VALUES (?, ?, ?)""",
-                           (nome, senha_hash, email))
+            cursor.execute("""
+                INSERT INTO USUARIOS (NOME, SENHA, EMAIL)
+                VALUES (?, ?, ?)
+            """, (nome, senha_hash, email))
 
             con.commit()
 
@@ -183,21 +202,43 @@ def login():
         nome = request.form['nome']
         senha = request.form['senha']
 
+        if nome in bloqueados:
+            flash('Este usuário está bloqueado')
+            return redirect(url_for('login'))
+
         cursor = con.cursor()
 
         try:
-            cursor.execute("""SELECT senha FROM USUARIOS WHERE nome = ?""", [nome])
+            cursor.execute("""
+                SELECT senha FROM USUARIOS
+                WHERE nome = ?
+            """, [nome])
 
             usuario = cursor.fetchone()
 
-            if usuario:
-                senha_hash = usuario[0]
+            if not usuario:
+                flash('Nome ou senha incorretos')
+                return redirect(url_for('login'))
 
-                if bcrypt.check_password_hash(senha_hash, senha):
-                    flash('Login feito')
-                    return redirect(url_for('index'))
+            senha_hash = usuario[0]
 
-            flash('Nome ou senha incorretos')
+            if bcrypt.check_password_hash(senha_hash, senha):
+                tentativas[nome] = 0
+
+                flash('Login feito')
+                return redirect(url_for('index'))
+
+            if nome not in tentativas:
+                tentativas[nome] = 1
+            else:
+                tentativas[nome] = tentativas[nome] + 1
+
+            if tentativas[nome] >= 3:
+                bloqueados.append(nome)
+                flash('Você errou a senha 3 vezes. Usuário bloqueado.')
+            else:
+                flash('Senha incorreta')
+
             return redirect(url_for('login'))
 
         except Exception as e:
@@ -210,18 +251,18 @@ def login():
     return render_template('login.html')
 
 
-@app.route('/index')
+@app.route('/index', methods=['GET'])
 def relatorio():
     cursor = con.cursor()
 
-    try:
-        cursor.execute("""SELECT id_livros, TITULO, AUTOR, ANO_PUBLICACAO
-                          FROM LIVROS""")
+    cursor.execute("""
+        SELECT id_livros, TITULO, AUTOR, ANO_PUBLICACAO
+        FROM LIVROS
+    """)
 
-        livros = cursor.fetchall()
+    livros = cursor.fetchall()
 
-    finally:
-        cursor.close()
+    cursor.close()
 
     pdf = FPDF()
 
@@ -229,10 +270,24 @@ def relatorio():
     pdf.add_page()
 
     pdf.set_font("Arial", style='B', size=16)
-    pdf.cell(200, 10, "Relatório de Livros", ln=True, align='C')
+
+    pdf.cell(
+        200,
+        10,
+        "Relatório de Livros",
+        ln=True,
+        align='C'
+    )
 
     pdf.ln(5)
-    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+
+    pdf.line(
+        10,
+        pdf.get_y(),
+        200,
+        pdf.get_y()
+    )
+
     pdf.ln(5)
 
     pdf.set_font("Arial", size=12)
