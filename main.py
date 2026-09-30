@@ -1,12 +1,13 @@
-import bcrypt
-from flask import Flask, render_template, request, flash, redirect, url_for, session, send_file
 import fdb
+from flask import Flask, render_template, request, flash, redirect, url_for, send_file
 from flask_bcrypt import Bcrypt
 from fpdf import FPDF
 
 app = Flask(__name__)
 
 app.config['SECRET_KEY'] = '*****'
+
+bcrypt = Bcrypt(app)
 
 host = 'localhost'
 database = r'C:\Users\Aluno\Downloads\BANCO (1)\BANCO.FDB'
@@ -19,13 +20,14 @@ con = fdb.connect(host=host, database=database, user=user, password=password)
 @app.route('/')
 def index():
     cursor = con.cursor()
-    cursor.execute("""  SELECT l.id_livros , l.TITULO , l.AUTOR , l.ANO_PUBLICACAO 
-                        FROM LIVROS l 
-      """)
+
+    cursor.execute("""SELECT l.id_livros, l.TITULO, l.AUTOR, l.ANO_PUBLICACAO
+                      FROM LIVROS l""")
+
     livros = cursor.fetchall()
     cursor.close()
-    return render_template("index.html", livros=livros)
 
+    return render_template("index.html", livros=livros)
 
 
 @app.route('/novo')
@@ -40,27 +42,32 @@ def criar():
     ano_publicacao = request.form['ano_publicacao']
 
     cursor = con.cursor()
+
     try:
-        cursor.execute(""" SELECT 1 FROM livros WHERE titulo = ?
-         """, [titulo, ])
+        cursor.execute("""SELECT 1 FROM livros WHERE titulo = ?""", [titulo])
 
         if cursor.fetchone():
             flash('Erro: Livro já existe no banco')
             return redirect(url_for('novo'))
 
-        cursor.execute(""" INSERT INTO livros (titulo, autor, ano_publicacao)
-                            VALUES (?,?,?) RETURNING id_livros""", (titulo, autor, ano_publicacao))
+        cursor.execute("""INSERT INTO livros (titulo, autor, ano_publicacao)
+                          VALUES (?, ?, ?) RETURNING id_livros""",
+                       (titulo, autor, ano_publicacao))
 
         id_livros = cursor.fetchone()[0]
+
         con.commit()
 
         arquivo = request.files['imagem']
         arquivo.save(f"uploads/livros/{id_livros}.jpg")
+
         flash('Livro cadastrado com sucesso!')
         return redirect(url_for('index'))
+
     except Exception as e:
         flash(f'Ocorreu um erro: {e}')
         con.rollback()
+
     finally:
         cursor.close()
 
@@ -68,9 +75,12 @@ def criar():
 @app.route('/editar/<int:id>', methods=['GET', 'POST'])
 def editar(id):
     cursor = con.cursor()
+
     try:
-        cursor.execute(""" SELECT id_livros, titulo, autor, ano_publicacao FROM LIVROS WHERE id_livros = ?
-                 """, [id, ])
+        cursor.execute("""SELECT id_livros, titulo, autor, ano_publicacao
+                          FROM LIVROS
+                          WHERE id_livros = ?""", [id])
+
         livro = cursor.fetchone()
 
         if not livro:
@@ -82,34 +92,42 @@ def editar(id):
             autor = request.form['autor']
             ano_publicacao = request.form['ano_publicacao']
 
-            cursor.execute(" UPDATE LIVROS SET titulo = ?, autor = ?, ano_publicacao = ? WHERE id_livros = ?",
+            cursor.execute("""UPDATE LIVROS
+                              SET titulo = ?, autor = ?, ano_publicacao = ?
+                              WHERE id_livros = ?""",
                            (titulo, autor, ano_publicacao, id))
 
             con.commit()
+
             flash('Livro editado com sucesso!')
-            return redirect(url_for('livros'))
+            return redirect(url_for('index'))
 
         return render_template('editar.html', livro=livro)
+
     except Exception as e:
         flash(f'Deu erro aqui! -> {e}')
         con.rollback()
+
     finally:
         cursor.close()
-
-    return render_template("editar.html", titulo=titulo, autor=autor, ano_publicacao=ano_publicacao)
 
 
 @app.route('/deletar/<int:id>')
 def deletar(id):
     cursor = con.cursor()
+
     try:
         cursor.execute("""DELETE FROM LIVROS WHERE id_livros = ?""", (id,))
+
         con.commit()
-        flash("O livro foi deletado ")
+
+        flash("O livro foi deletado")
         return redirect(url_for("index"))
+
     except Exception as e:
         flash(f'Algo deu errado -> {e}')
         con.rollback()
+
     finally:
         cursor.close()
 
@@ -121,39 +139,42 @@ def cadastrar():
         senha = request.form['senha']
         email = request.form['email']
 
-    if len(senha) < 8:
-        flash('A senha deve ter pelo menos 8 caracteres')
-        return redirect(url_for('index'))
+        if len(senha) < 8:
+            flash('A senha deve ter pelo menos 8 caracteres')
+            return redirect(url_for('cadastrar'))
 
-    if senha.islower():
-        flash('A senha deve ter pelo menos uma letra maiúscula')
-        return redirect(url_for('index'))
+        if senha.islower():
+            flash('A senha deve ter pelo menos uma letra maiúscula')
+            return redirect(url_for('cadastrar'))
 
-    cursor = con.cursor()
+        cursor = con.cursor()
 
-    try:
-        cursor.execute(""" SELECT 1 FROM USUARIOS WHERE nome = ?
-        """, [nome])
+        try:
+            cursor.execute("""SELECT 1 FROM USUARIOS WHERE nome = ?""", [nome])
 
-        if cursor.fetchone():
-            flash('Erro: Usuário já existe')
-            return redirect(url_for('index'))
+            if cursor.fetchone():
+                flash('Erro: Usuário já existe')
+                return redirect(url_for('cadastrar'))
 
-        senha_hash = bcrypt.generate_password_hash(senha).decode('utf-8')
+            senha_hash = bcrypt.generate_password_hash(senha).decode('utf-8')
 
-        cursor.execute(""" INSERT INTO USUARIOS (NOME, SENHA, EMAIL)
-                           VALUES (?,?,?)""", (nome, senha_hash, email))
+            cursor.execute("""INSERT INTO USUARIOS (NOME, SENHA, EMAIL)
+                              VALUES (?, ?, ?)""",
+                           (nome, senha_hash, email))
 
-        con.commit()
+            con.commit()
 
-        flash('Cadastro realizado com sucesso!')
-        return redirect(url_for('index'))
-    except Exception as e:
-        flash(f'Ocorreu um erro: {e}')
-        con.rollback()
-    finally:
-        cursor.close()
-        return render_template('cadastro.html')
+            flash('Cadastro realizado')
+            return redirect(url_for('login'))
+
+        except Exception as e:
+            flash(f'Ocorreu um erro: {e}')
+            con.rollback()
+
+        finally:
+            cursor.close()
+
+    return render_template('cadastro.html')
 
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -162,64 +183,60 @@ def login():
         nome = request.form['nome']
         senha = request.form['senha']
 
-    cursor = con.cursor()
-    try:
-        cursor.execute(""" SELECT senha FROM USUARIOS WHERE nome = ?
-        """, [nome])
-        usuario = cursor.fetchone()
+        cursor = con.cursor()
 
-        if usuario:
-            senha_hash = usuario[0]
+        try:
+            cursor.execute("""SELECT senha FROM USUARIOS WHERE nome = ?""", [nome])
 
-            if bcrypt.check_password_hash(senha_hash, senha):
+            usuario = cursor.fetchone()
 
-                flash('Login feito com sucesso!')
-                return redirect(url_for('index'))
+            if usuario:
+                senha_hash = usuario[0]
 
-        flash('Nome ou senha incorretos')
-        return redirect(url_for('index'))
+                if bcrypt.check_password_hash(senha_hash, senha):
+                    flash('Login feito')
+                    return redirect(url_for('index'))
 
-    except Exception as e:
-        flash(f'Ocorreu um erro: {e}')
-        con.rollback()
+            flash('Nome ou senha incorretos')
+            return redirect(url_for('login'))
 
-        return redirect(url_for('index'))
+        except Exception as e:
+            flash(f'Ocorreu um erro: {e}')
+            con.rollback()
 
-    finally:
-        cursor.close()
-        return render_template('login.html')
+        finally:
+            cursor.close()
 
-@app.route('/logout')
-def logout():
-    session.pop('usuario', None)
-    flash('Você saiu da sua conta')
-    return redirect(url_for('index'))
+    return render_template('login.html')
 
 
-@app.route('/index', methods=['GET'])
+@app.route('/index')
 def relatorio():
     cursor = con.cursor()
 
-    cursor.execute("""
-        SELECT id_livros, TITULO, AUTOR, ANO_PUBLICACAO
-        FROM LIVROS
-    """)
+    try:
+        cursor.execute("""SELECT id_livros, TITULO, AUTOR, ANO_PUBLICACAO
+                          FROM LIVROS""")
 
-    livros = cursor.fetchall()
-    cursor.close()
+        livros = cursor.fetchall()
+
+    finally:
+        cursor.close()
 
     pdf = FPDF()
+
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
 
     pdf.set_font("Arial", style='B', size=16)
     pdf.cell(200, 10, "Relatório de Livros", ln=True, align='C')
 
-    pdf.ln(5)  # Espaço entre o título e a linha
-    pdf.line(10, pdf.get_y(), 200, pdf.get_y())  # Linha abaixo do título
-    pdf.ln(5)  # Espaço após a linha
+    pdf.ln(5)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(5)
 
     pdf.set_font("Arial", size=12)
+
     for livro in livros:
         pdf.cell(
             200,
@@ -230,8 +247,10 @@ def relatorio():
 
     contador_livros = len(livros)
 
-    pdf.ln(10)  # Espaço antes do contador
+    pdf.ln(10)
+
     pdf.set_font("Arial", style='B', size=12)
+
     pdf.cell(
         200,
         10,
@@ -241,7 +260,9 @@ def relatorio():
     )
 
     pdf_path = "relatorio_livros.pdf"
+
     pdf.output(pdf_path)
+
     return send_file(
         pdf_path,
         as_attachment=True,
