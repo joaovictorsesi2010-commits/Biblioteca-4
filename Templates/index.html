@@ -7,6 +7,7 @@
 </head>
 <body>
 <h1>Minha biblioteca pessoal!</h1>
+
     {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 <div class="flash-messages">
@@ -16,9 +17,6 @@
                 </div>
             {% endif %}
         {% endwith %}
-
-
-
 
     <table>
       <thead>
@@ -46,13 +44,20 @@
       {% endfor %}
       </tbody>
     </table>
+
     <a href="novo">
         <button type="button">Criar novo</button>
     </a>
+
     <a href="login">
         <button type="button">Login</button>
     </a>
-    <a href="#">
+
+    <a href="cadastrar">
+        <button type="button">Cadastrar</button>
+    </a>
+
+    <a href="{{ url_for('relatorio') }}">
         <button type="button">Relatório</button>
     </a>
 
